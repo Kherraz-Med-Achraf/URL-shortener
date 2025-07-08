@@ -14,6 +14,7 @@ type Link struct {
 	Alias     string    `json:"alias"`
 	TargetURL string    `json:"target_url"`
 	CreatedAt time.Time `json:"created_at"`
+	ExpiresAt time.Time `json:"expires_at"`
 }
 
 const dataDir = "data"
@@ -48,13 +49,15 @@ func main() {
 
 	// Route pour vérifier que ça marche encore
 	app.Get("/", func(c *fiber.Ctx) error {
-		return c.SendString("Hello World en Go avec Fiber ! 🚀")
+		return c.SendString("Hello World en Go avec Fiber !!! 🚀")
 	})
 
 	// Route POST /api/shorten
 	app.Post("/api/shorten", func(c *fiber.Ctx) error {
 		var body struct {
-			URL string `json:"url"`
+			URL               string `json:"url"`
+			Alias             string `json:"alias"` // Nouveau champ pour personnalisation
+			ExpirationMinutes int    `json:"expiration_minutes"`
 		}
 		if err := c.BodyParser(&body); err != nil {
 			return fiber.NewError(fiber.StatusBadRequest, "JSON invalide")
@@ -63,19 +66,35 @@ func main() {
 			return fiber.NewError(fiber.StatusBadRequest, "Champ url manquant")
 		}
 
-		// Génère un code court (6 caractères aléatoires)
-		alias := uuid.NewString()[:6]
+		// Choix de l'alias : personnalisé ou généré
+		alias := body.Alias
+		if alias == "" {
+			alias = uuid.NewString()[:6]
+		} else {
+			// Vérifie que l'alias n'existe pas déjà
+			if _, err := loadLink(alias); err == nil {
+				return fiber.NewError(fiber.StatusConflict, "Alias déjà utilisé")
+			}
+		}
+
+		expiresAt := time.Time{} // 0 = jamais expiré
+		if body.ExpirationMinutes > 0 {
+			expiresAt = time.Now().Add(time.Duration(body.ExpirationMinutes) * time.Minute)
+		}
+
 		link := Link{
 			Alias:     alias,
 			TargetURL: body.URL,
 			CreatedAt: time.Now(),
+			ExpiresAt: expiresAt,
 		}
 		if err := saveLink(link); err != nil {
 			return fiber.NewError(fiber.StatusInternalServerError, err.Error())
 		}
 
 		return c.JSON(fiber.Map{
-			"short_url": "http://localhost:3000/" + alias,
+			"short_url":  "http://localhost:3000/" + alias,
+			"expires_at": expiresAt,
 		})
 	})
 
@@ -86,6 +105,10 @@ func main() {
 		if err != nil {
 			// Lien inconnu
 			return fiber.NewError(fiber.StatusNotFound, "Lien non trouvé")
+		}
+		// Vérifie l'expiration
+		if !link.ExpiresAt.IsZero() && time.Now().After(link.ExpiresAt) {
+			return fiber.NewError(fiber.StatusGone, "Lien expiré")
 		}
 		// Redirige vers l'URL d'origine
 		return c.Redirect(link.TargetURL, fiber.StatusSeeOther)
