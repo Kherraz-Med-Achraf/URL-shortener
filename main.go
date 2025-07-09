@@ -11,10 +11,11 @@ import (
 )
 
 type Link struct {
-	Alias     string    `json:"alias"`
-	TargetURL string    `json:"target_url"`
-	CreatedAt time.Time `json:"created_at"`
-	ExpiresAt time.Time `json:"expires_at"`
+	Alias      string    `json:"alias"`
+	TargetURL  string    `json:"target_url"`
+	CreatedAt  time.Time `json:"created_at"`
+	ExpiresAt  time.Time `json:"expires_at"`
+	ClickCount int       `json:"click_count"`
 }
 
 const dataDir = "data"
@@ -112,8 +113,30 @@ func main() {
 		if !link.ExpiresAt.IsZero() && time.Now().After(link.ExpiresAt) {
 			return fiber.NewError(fiber.StatusGone, "Lien expiré")
 		}
+
+		// Incrémente le nombre de clics
+		link.ClickCount++
+		_ = saveLink(link)
+
 		// Redirige vers l'URL d'origine
 		return c.Redirect(link.TargetURL, fiber.StatusSeeOther)
+	})
+
+	app.Get("/api/links", func(c *fiber.Ctx) error {
+		files, _ := filepath.Glob(filepath.Join(dataDir, "*.json"))
+		links := make([]Link, 0, len(files))
+		for _, f := range files {
+			fjson, err := os.Open(f)
+			if err != nil {
+				continue
+			}
+			var l Link
+			if json.NewDecoder(fjson).Decode(&l) == nil {
+				links = append(links, l)
+			}
+			fjson.Close()
+		}
+		return c.JSON(links)
 	})
 
 	app.Listen(":3000")
