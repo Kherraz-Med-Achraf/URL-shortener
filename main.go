@@ -47,6 +47,8 @@ func main() {
 
 	app := fiber.New()
 
+	app.Static("/", "./static")
+
 	// Route pour vérifier que ça marche encore
 	app.Get("/", func(c *fiber.Ctx) error {
 		return c.SendString("Hello World en Go avec Fiber !!! 🚀")
