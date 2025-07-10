@@ -7,6 +7,20 @@
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
+    <!-- Widget d'authentification -->
+    <div id="auth-widget" class="auth-widget">
+      <div id="auth-logged-out" class="auth-section">
+        <button id="login-btn" class="auth-btn">Connexion</button>
+        <button id="register-btn" class="auth-btn">Inscription</button>
+      </div>
+      <div id="auth-logged-in" class="auth-section" style="display: none">
+        <span id="username-display" class="username-display"
+          >👤 Utilisateur</span
+        >
+        <button id="logout-btn" class="auth-btn logout">Déconnexion</button>
+      </div>
+    </div>
+
     <div class="container">
       <h1>🔗 Mini URL Shortener</h1>
       <form id="shorten-form">

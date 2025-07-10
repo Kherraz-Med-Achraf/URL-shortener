@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Connexion</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <!-- Bouton de retour fixe -->
+    <button id="back-btn" class="back-btn" onclick="window.location.href='/'">
+      ← Accueil
+    </button>
+
+    <div class="container">
+      <h1>Connexion</h1>
+      <form id="login-form">
+        <div class="form-group">
+          <label for="login-username">Nom d'utilisateur</label>
+          <input type="text" id="login-username" required />
+        </div>
+        <div class="form-group">
+          <label for="login-password">Mot de passe</label>
+          <input type="password" id="login-password" required />
+        </div>
+        <button type="submit">Se connecter</button>
+      </form>
+      <div id="login-message" class="result" style="display: none"></div>
+      <p style="text-align: center">
+        <a href="/register.html" class="cta">Pas de compte ? S'inscrire</a>
+      </p>
+    </div>
+    <script src="script.js"></script>
+  </body>
+</html>

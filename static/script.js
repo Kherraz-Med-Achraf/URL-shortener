@@ -42,9 +42,13 @@ document.addEventListener("DOMContentLoaded", function () {
         '<span class="loading"></span>Traitement en cours...';
 
       try {
-        const res = await fetch("/api/shorten", {
+        const headers = { "Content-Type": "application/json" };
+        if (localStorage.token)
+          headers.Authorization = "Bearer " + localStorage.token;
+
+        const res = await fetch("/api/private/shorten", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers,
           body: JSON.stringify(payload),
         });
 
@@ -129,7 +133,13 @@ document.addEventListener("DOMContentLoaded", async function () {
 
     // Chargement des liens
     try {
-      const res = await fetch("/api/links");
+      const headers = { "Content-Type": "application/json" };
+      if (localStorage.token) {
+        headers.Authorization = "Bearer " + localStorage.token;
+      } else {
+        window.location.href = "/login.html";
+      }
+      const res = await fetch("/api/private/links", { headers });
       const data = await res.json();
 
       if (!res.ok) {
@@ -176,4 +186,174 @@ document.addEventListener("DOMContentLoaded", async function () {
       `;
     }
   }
+});
+
+// Script pour la page de connexion (login.html)
+document.addEventListener("DOMContentLoaded", function () {
+  const loginForm = document.getElementById("login-form");
+  if (loginForm) {
+    loginForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const username = document.getElementById("login-username").value.trim();
+      const password = document.getElementById("login-password").value;
+      const messageDiv = document.getElementById("login-message");
+
+      messageDiv.style.display = "block";
+      messageDiv.className = "result";
+      messageDiv.textContent = "Connexion en cours...";
+
+      try {
+        const res = await fetch("/api/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ username, password }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.message || "Erreur inconnue");
+
+        // Stocke le token dans le stockage local
+        localStorage.setItem("token", data.token);
+        messageDiv.textContent = "Connexion réussie ! Redirection...";
+        setTimeout(() => {
+          window.location.href = "/"; // redirige vers la page principale
+        }, 800);
+      } catch (err) {
+        messageDiv.className = "result error";
+        messageDiv.textContent = err.message;
+      }
+    });
+  }
+});
+
+// Script pour la page d'inscription (register.html)
+document.addEventListener("DOMContentLoaded", function () {
+  const regForm = document.getElementById("register-form");
+  if (!regForm) return; // on n'est pas sur register.html
+
+  regForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const username = document.getElementById("reg-username").value.trim();
+    const password = document.getElementById("reg-password").value;
+    const msg = document.getElementById("register-message");
+
+    msg.style.display = "block";
+    msg.className = "result";
+    msg.textContent = "Création du compte…";
+
+    try {
+      const res = await fetch("/api/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username, password }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.message || "Erreur inconnue");
+      }
+
+      msg.textContent = "Compte créé ! Redirection vers la connexion…";
+      setTimeout(() => (window.location.href = "/login.html"), 800);
+    } catch (err) {
+      msg.className = "result error";
+      msg.textContent = err.message;
+    }
+  });
+});
+
+// Gestion du widget d'authentification
+document.addEventListener("DOMContentLoaded", function () {
+  const authWidget = document.getElementById("auth-widget");
+  if (!authWidget) return; // pas sur la page d'index
+
+  const authLoggedOut = document.getElementById("auth-logged-out");
+  const authLoggedIn = document.getElementById("auth-logged-in");
+  const usernameDisplay = document.getElementById("username-display");
+  const loginBtn = document.getElementById("login-btn");
+  const registerBtn = document.getElementById("register-btn");
+  const logoutBtn = document.getElementById("logout-btn");
+
+  // Fonction pour décoder le token JWT (partie payload)
+  function decodeJWT(token) {
+    try {
+      const base64Url = token.split(".")[1];
+      const base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
+      const jsonPayload = decodeURIComponent(
+        atob(base64)
+          .split("")
+          .map(function (c) {
+            return "%" + ("00" + c.charCodeAt(0).toString(16)).slice(-2);
+          })
+          .join("")
+      );
+      return JSON.parse(jsonPayload);
+    } catch (error) {
+      console.error("Erreur lors du décodage du token:", error);
+      return null;
+    }
+  }
+
+  // Fonction pour vérifier si le token est expiré
+  function isTokenExpired(token) {
+    const payload = decodeJWT(token);
+    if (!payload || !payload.exp) return true;
+    return Date.now() >= payload.exp * 1000;
+  }
+
+  // Fonction pour mettre à jour l'affichage du widget
+  function updateAuthWidget() {
+    const token = localStorage.getItem("token");
+
+    if (!token || isTokenExpired(token)) {
+      // Utilisateur non connecté ou token expiré
+      if (token && isTokenExpired(token)) {
+        localStorage.removeItem("token");
+      }
+      authLoggedOut.style.display = "flex";
+      authLoggedIn.style.display = "none";
+    } else {
+      // Utilisateur connecté
+      const payload = decodeJWT(token);
+      if (payload && payload.sub) {
+        usernameDisplay.textContent = `👤 ${payload.sub}`;
+        if (payload.adm) {
+          usernameDisplay.textContent += " (Admin)";
+        }
+      }
+      authLoggedOut.style.display = "none";
+      authLoggedIn.style.display = "flex";
+    }
+  }
+
+  // Gestionnaires d'événements pour les boutons
+  loginBtn.addEventListener("click", function () {
+    window.location.href = "/login.html";
+  });
+
+  registerBtn.addEventListener("click", function () {
+    window.location.href = "/register.html";
+  });
+
+  logoutBtn.addEventListener("click", function () {
+    localStorage.removeItem("token");
+    updateAuthWidget();
+
+    // Optionnel : rafraîchir la page ou afficher un message
+    const messageDiv = document.getElementById("message");
+    if (messageDiv) {
+      messageDiv.style.display = "block";
+      messageDiv.className = "result";
+      messageDiv.innerHTML =
+        '<div style="text-align: center;">Déconnexion réussie !</div>';
+      setTimeout(() => {
+        messageDiv.style.display = "none";
+      }, 3000);
+    }
+  });
+
+  // Mettre à jour l'affichage au chargement
+  updateAuthWidget();
+
+  // Vérifier périodiquement si le token a expiré
+  setInterval(updateAuthWidget, 60000); // Vérifier chaque minute
 });
