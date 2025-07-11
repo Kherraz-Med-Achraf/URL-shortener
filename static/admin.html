@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Dashboard Admin</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <!-- Bouton de retour fixe -->
+    <button id="back-btn" class="back-btn" onclick="window.location.href='/'">
+      ← Accueil
+    </button>
+    <div class="container">
+      <h1>Dashboard Admin</h1>
+      <table class="links-table">
+        <thead>
+          <tr>
+            <th>Nom d'utilisateur</th>
+            <th>Admin</th>
+            <th class="center">Actions</th>
+          </tr>
+        </thead>
+        <tbody id="users-body"></tbody>
+      </table>
+      <div id="admin-message" class="result" style="display: none"></div>
+    </div>
+    <script src="script.js"></script>
+  </body>
+</html>

@@ -65,8 +65,16 @@ document.addEventListener("DOMContentLoaded", function () {
           </div>
           <div style="background: #fff; padding: 1rem; border-radius: 8px; margin: 1rem 0;">
             <strong>URL courte :</strong><br>
-            <a href="${data.short_url}" target="_blank" style="font-size: 1.1rem;">${data.short_url}</a>
+            <a href="${
+              data.short_url
+            }" target="_blank" style="font-size: 1.1rem;">${data.short_url}</a>
           </div>
+        <div style="text-align:center;">
+          <img src="/qr/${data.short_url
+            .split("/")
+            .pop()}" alt="QR Code" style="max-width:150px; margin-top:1rem;" />
+          <div style="font-size:0.8rem;color:#718096;margin-top:0.5rem;">Scannez pour ouvrir</div>
+        </div>
         `;
 
         if (data.expires_at) {
@@ -173,8 +181,19 @@ document.addEventListener("DOMContentLoaded", async function () {
           <td class="center">
             ${link.click_count}
           </td>
+          <td class="center">
+            <button class="qr-btn auth-btn" data-alias="${link.alias}">QR</button>
+          </td>
         `;
         linksBody.appendChild(tr);
+      });
+
+      // Délégation d'événement pour boutons QR
+      linksBody.addEventListener("click", function (e) {
+        const btn = e.target.closest(".qr-btn");
+        if (!btn) return;
+        const alias = btn.getAttribute("data-alias");
+        window.open(`/qr/${alias}`, "_blank");
       });
     } catch (err) {
       linksBody.innerHTML = `
@@ -311,6 +330,8 @@ document.addEventListener("DOMContentLoaded", function () {
       }
       authLoggedOut.style.display = "flex";
       authLoggedIn.style.display = "none";
+      const adminLink = document.getElementById("admin-link");
+      if (adminLink) adminLink.style.display = "none";
     } else {
       // Utilisateur connecté
       const payload = decodeJWT(token);
@@ -318,6 +339,8 @@ document.addEventListener("DOMContentLoaded", function () {
         usernameDisplay.textContent = `👤 ${payload.sub}`;
         if (payload.adm) {
           usernameDisplay.textContent += " (Admin)";
+          const adminLink = document.getElementById("admin-link");
+          if (adminLink) adminLink.style.display = "inline-block";
         }
       }
       authLoggedOut.style.display = "none";
@@ -356,4 +379,84 @@ document.addEventListener("DOMContentLoaded", function () {
 
   // Vérifier périodiquement si le token a expiré
   setInterval(updateAuthWidget, 60000); // Vérifier chaque minute
+});
+
+// Script pour la page admin (admin.html)
+document.addEventListener("DOMContentLoaded", async function () {
+  const usersBody = document.getElementById("users-body");
+  if (!usersBody) return; // pas sur admin.html
+
+  const msgDiv = document.getElementById("admin-message");
+
+  function showMessage(text, isError = false) {
+    msgDiv.style.display = "block";
+    msgDiv.className = isError ? "result error" : "result";
+    msgDiv.textContent = text;
+    setTimeout(() => (msgDiv.style.display = "none"), 3000);
+  }
+
+  async function loadUsers() {
+    usersBody.innerHTML = "<tr><td colspan='3'>Chargement...</td></tr>";
+    try {
+      const headers = { "Content-Type": "application/json" };
+      if (!localStorage.token) {
+        window.location.href = "/login.html";
+        return;
+      }
+      headers.Authorization = "Bearer " + localStorage.token;
+      const res = await fetch("/api/private/admin/users", { headers });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "Erreur inconnue");
+
+      if (data.length === 0) {
+        usersBody.innerHTML = `<tr><td colspan="3" class="empty-state">Aucun utilisateur</td></tr>`;
+        return;
+      }
+
+      usersBody.innerHTML = "";
+      data.forEach((user) => {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td>${user.username}</td>
+          <td class="center">${user.is_admin ? "✔️" : ""}</td>
+          <td class="center">
+            <button class="auth-btn logout delete-user" data-username="${
+              user.username
+            }">Supprimer</button>
+          </td>
+        `;
+        usersBody.appendChild(tr);
+      });
+    } catch (err) {
+      usersBody.innerHTML = `<tr><td colspan="3" class="error-state">${err.message}</td></tr>`;
+    }
+  }
+
+  // Chargement initial
+  await loadUsers();
+
+  // Délégation d'événement pour les boutons supprimer
+  usersBody.addEventListener("click", async function (e) {
+    const btn = e.target.closest(".delete-user");
+    if (!btn) return;
+    const username = btn.getAttribute("data-username");
+    if (!confirm(`Supprimer l'utilisateur ${username} ?`)) return;
+
+    try {
+      const headers = { "Content-Type": "application/json" };
+      headers.Authorization = "Bearer " + localStorage.token;
+      const res = await fetch(`/api/private/admin/users/${username}`, {
+        method: "DELETE",
+        headers,
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.message || "Erreur inconnue");
+      }
+      showMessage("Utilisateur supprimé");
+      await loadUsers();
+    } catch (err) {
+      showMessage(err.message, true);
+    }
+  });
 });

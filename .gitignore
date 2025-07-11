@@ -1,0 +1,33 @@
+# === Fichiers binaires / artefacts de build ===
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+
+# Dossiers bin générés par "go install"
+/bin/
+/pkg/
+
+# Couverture & rapports
+cover.out
+*.cov
+
+# Dépendances vendorisées (si vous utilisez go mod vendor)
+/vendor/
+
+# Éditeurs / IDE
+.idea/
+.vscode/
+*.swp
+
+# Dossiers temporaires
+/tmp/
+
+# --- Données de l'application ---
+# On garde la structure des dossiers mais on ignore leur contenu JSON
+/data/links/*.json
+/data/users/*.json
+
