@@ -2,7 +2,7 @@
 <html lang="fr">
   <head>
     <meta charset="UTF-8" />
-    <title>Mini URL Shortener</title>
+    <title>URL Shortener</title>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <link rel="stylesheet" href="styles.css" />
   </head>
@@ -29,9 +29,13 @@
     </div>
 
     <div class="container">
-      <h1>🔗 Mini URL Shortener</h1>
+      <h1>🔗 URL Shortener</h1>
       <form id="shorten-form">
-        <div class="form-group">
+        <div class="form-group multi">
+          <label> Plusieurs liens </label>
+          <input type="checkbox" id="multi-checkbox" />
+        </div>
+        <div class="form-group" id="single-url-group">
           <label for="url"> URL à raccourcir </label>
           <input
             type="url"
@@ -40,9 +44,44 @@
             required
           />
         </div>
+        <div class="form-group" id="multi-urls-group" style="display: none">
+          <label> URLs à regrouper </label>
+          <div id="urls-container">
+            <div class="url-input-row">
+              <input
+                type="url"
+                class="multi-url-input"
+                placeholder="https://exemple1.com"
+              />
+              <button
+                type="button"
+                class="remove-url-btn"
+                style="display: none"
+              >
+                ×
+              </button>
+            </div>
+            <div class="url-input-row">
+              <input
+                type="url"
+                class="multi-url-input"
+                placeholder="https://exemple2.com"
+              />
+              <button type="button" class="remove-url-btn">×</button>
+            </div>
+          </div>
+          <button type="button" id="add-url-btn" class="add-url-btn">
+            + Ajouter une URL
+          </button>
+        </div>
         <div class="form-group">
           <label for="alias"> Alias personnalisé (facultatif) </label>
-          <input type="text" id="alias" placeholder="mon-alias" />
+          <div class="alias-input-container">
+            <input type="text" id="alias" placeholder="mon-alias" />
+            <button type="button" id="suggest-alias-btn" class="suggest-btn">
+              🤖 Suggérer avec IA
+            </button>
+          </div>
         </div>
 
         <div class="form-group">

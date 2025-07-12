@@ -31,3 +31,6 @@ cover.out
 /data/links/*.json
 /data/users/*.json
 
+# Fichiers d'environnement (ne pas commit ses clés secrètes)
+.env
+

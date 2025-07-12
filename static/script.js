@@ -3,6 +3,39 @@ document.addEventListener("DOMContentLoaded", function () {
   const shortenForm = document.getElementById("shorten-form");
 
   if (shortenForm) {
+    // Vérifier si l'utilisateur est connecté
+    const token = localStorage.getItem("token");
+    if (!token) {
+      window.location.href = "/login.html";
+      return;
+    }
+
+    // Vérifier si le token est expiré
+    function isTokenExpired(token) {
+      try {
+        const base64Url = token.split(".")[1];
+        const base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
+        const jsonPayload = decodeURIComponent(
+          atob(base64)
+            .split("")
+            .map(function (c) {
+              return "%" + ("00" + c.charCodeAt(0).toString(16)).slice(-2);
+            })
+            .join("")
+        );
+        const payload = JSON.parse(jsonPayload);
+        return Date.now() >= payload.exp * 1000;
+      } catch (error) {
+        return true;
+      }
+    }
+
+    if (isTokenExpired(token)) {
+      localStorage.removeItem("token");
+      window.location.href = "/login.html";
+      return;
+    }
+
     // Animation d'entrée au chargement de la page
     const container = document.querySelector(".container");
     if (container) {
@@ -16,18 +49,80 @@ document.addEventListener("DOMContentLoaded", function () {
       }, 100);
     }
 
+    const urlInput = document.getElementById("url");
+    const multiCheckbox = document.getElementById("multi-checkbox");
+    const urlsContainer = document.getElementById("urls-container");
+    const addUrlBtn = document.getElementById("add-url-btn");
+    const singleGroup = document.getElementById("single-url-group");
+    const multiGroup = document.getElementById("multi-urls-group");
+
+    // Gestion des boutons ajouter/supprimer URL
+    function updateRemoveButtons() {
+      const rows = urlsContainer.querySelectorAll(".url-input-row");
+      rows.forEach((row, index) => {
+        const removeBtn = row.querySelector(".remove-url-btn");
+        removeBtn.style.display = rows.length > 1 ? "inline-block" : "none";
+      });
+    }
+
+    addUrlBtn.addEventListener("click", function () {
+      const newRow = document.createElement("div");
+      newRow.className = "url-input-row";
+      newRow.innerHTML = `
+        <input type="url" class="multi-url-input" placeholder="https://exemple.com" />
+        <button type="button" class="remove-url-btn">×</button>
+      `;
+      urlsContainer.appendChild(newRow);
+      updateRemoveButtons();
+    });
+
+    urlsContainer.addEventListener("click", function (e) {
+      if (e.target.classList.contains("remove-url-btn")) {
+        e.target.parentElement.remove();
+        updateRemoveButtons();
+      }
+    });
+
+    // Toggle affichage des champs
+    multiCheckbox.addEventListener("change", function () {
+      if (this.checked) {
+        singleGroup.style.display = "none";
+        multiGroup.style.display = "block";
+        urlInput.required = false;
+        updateRemoveButtons();
+      } else {
+        singleGroup.style.display = "block";
+        multiGroup.style.display = "none";
+        urlInput.required = true;
+      }
+    });
+
     // Gestion du formulaire de raccourcissement
     shortenForm.addEventListener("submit", async (e) => {
       e.preventDefault();
 
-      const url = document.getElementById("url").value.trim();
+      const url = urlInput.value.trim();
+      const multi = multiCheckbox.checked;
+      let urls = [];
+      if (multi) {
+        const inputs = urlsContainer.querySelectorAll(".multi-url-input");
+        urls = Array.from(inputs)
+          .map((input) => input.value.trim())
+          .filter((u) => u);
+      }
       const alias = document.getElementById("alias").value.trim();
       const expires = document.getElementById("expires").value.trim();
       const submitButton = document.querySelector("button[type='submit']");
       const messageDiv = document.getElementById("message");
 
       // Préparation de la requête
-      const payload = { url };
+      const payload = {};
+      if (multi) {
+        payload.multi = true;
+        payload.urls = urls;
+      } else {
+        payload.url = url;
+      }
       if (alias) payload.alias = alias;
       if (expires) payload.expiration_minutes = parseInt(expires, 10);
 
@@ -52,10 +147,27 @@ document.addEventListener("DOMContentLoaded", function () {
           body: JSON.stringify(payload),
         });
 
-        const data = await res.json();
+        const contentType = res.headers.get("content-type") || "";
+        let data;
+        if (contentType.includes("application/json")) {
+          data = await res.json();
+        } else {
+          data = await res.text();
+        }
 
         if (!res.ok) {
-          throw new Error(data.message || "Erreur inconnue");
+          const message =
+            typeof data === "string" ? data : data.message || "Erreur inconnue";
+          throw new Error(message);
+        }
+
+        // Si data est texte, essayer de le convertir en JSON si possible
+        if (typeof data === "string") {
+          try {
+            data = JSON.parse(data);
+          } catch (e) {
+            data = {};
+          }
         }
 
         // Affichage du succès avec animation
@@ -108,6 +220,69 @@ document.addEventListener("DOMContentLoaded", function () {
       }
     });
 
+    // Gestion du bouton de suggestion d'alias avec IA
+    const suggestAliasBtn = document.getElementById("suggest-alias-btn");
+    const aliasInput = document.getElementById("alias");
+
+    if (suggestAliasBtn) {
+      suggestAliasBtn.addEventListener("click", async function () {
+        const currentUrl = multiCheckbox.checked ? "" : urlInput.value.trim();
+
+        if (!currentUrl) {
+          alert("Veuillez d'abord saisir une URL");
+          return;
+        }
+
+        // Désactiver le bouton pendant la requête
+        suggestAliasBtn.disabled = true;
+        suggestAliasBtn.innerHTML = "🤖 Génération IA...";
+
+        try {
+          const headers = { "Content-Type": "application/json" };
+          if (localStorage.token) {
+            headers.Authorization = "Bearer " + localStorage.token;
+          }
+
+          const response = await fetch("/api/private/suggest-alias", {
+            method: "POST",
+            headers,
+            body: JSON.stringify({ url: currentUrl }),
+          });
+
+          const contentType2 = response.headers.get("content-type") || "";
+          let data;
+          if (contentType2.includes("application/json")) {
+            data = await response.json();
+          } else {
+            data = await response.text();
+          }
+
+          if (response.ok) {
+            aliasInput.value = data.suggested_alias;
+            // Animation de mise en surbrillance
+            aliasInput.style.backgroundColor = "#e6fffa";
+            aliasInput.style.transition = "background-color 0.3s ease";
+            setTimeout(() => {
+              aliasInput.style.backgroundColor = "";
+            }, 1500);
+          } else {
+            const message =
+              typeof data === "string"
+                ? data
+                : data.message || "Erreur inconnue";
+            alert("Erreur lors de la suggestion IA: " + message);
+          }
+        } catch (error) {
+          console.error("Erreur suggestion alias:", error);
+          alert("Erreur de connexion lors de la suggestion d'alias");
+        } finally {
+          // Restaurer le bouton
+          suggestAliasBtn.disabled = false;
+          suggestAliasBtn.innerHTML = "🤖 Suggérer avec IA";
+        }
+      });
+    }
+
     // Amélioration de l'expérience utilisateur avec les inputs
     document.querySelectorAll("input").forEach((input) => {
       input.addEventListener("focus", function () {
@@ -157,7 +332,7 @@ document.addEventListener("DOMContentLoaded", async function () {
       if (data.length === 0) {
         linksBody.innerHTML = `
           <tr>
-            <td colspan="3" class="empty-state">
+            <td colspan="5" class="empty-state">
               Aucun lien raccourci pour le moment
             </td>
           </tr>
@@ -167,12 +342,16 @@ document.addEventListener("DOMContentLoaded", async function () {
 
       data.forEach((link) => {
         const tr = document.createElement("tr");
+        let urlCellHtml = "";
+        if (link.multi) {
+          urlCellHtml = link.target_urls
+            .map((u) => `<div><a href="${u}" target="_blank">${u}</a></div>`)
+            .join("");
+        } else {
+          urlCellHtml = `<a href="${link.target_url}" target="_blank" title="${link.target_url}">${link.target_url}</a>`;
+        }
         tr.innerHTML = `
-          <td class="url-cell">
-            <a href="${link.target_url}" target="_blank" title="${link.target_url}">
-              ${link.target_url}
-            </a>
-          </td>
+          <td class="url-cell">${urlCellHtml}</td>
           <td class="short-url-cell">
             <a href="/${link.alias}" target="_blank">
               ${location.origin}/${link.alias}
@@ -183,6 +362,9 @@ document.addEventListener("DOMContentLoaded", async function () {
           </td>
           <td class="center">
             <button class="qr-btn auth-btn" data-alias="${link.alias}">QR</button>
+          </td>
+          <td class="center">
+            <button class="delete-btn auth-btn logout" data-alias="${link.alias}">Supprimer</button>
           </td>
         `;
         linksBody.appendChild(tr);
@@ -195,10 +377,38 @@ document.addEventListener("DOMContentLoaded", async function () {
         const alias = btn.getAttribute("data-alias");
         window.open(`/qr/${alias}`, "_blank");
       });
+
+      // Délégation d'événement pour boutons supprimer
+      linksBody.addEventListener("click", async function (e) {
+        const btn = e.target.closest(".delete-btn");
+        if (!btn) return;
+        const alias = btn.getAttribute("data-alias");
+
+        if (!confirm(`Supprimer le lien ${alias} ?`)) return;
+
+        try {
+          const headers = { "Content-Type": "application/json" };
+          headers.Authorization = "Bearer " + localStorage.token;
+          const res = await fetch(`/api/private/links/${alias}`, {
+            method: "DELETE",
+            headers,
+          });
+
+          if (!res.ok) {
+            const data = await res.json();
+            throw new Error(data.message || "Erreur lors de la suppression");
+          }
+
+          // Recharger la liste
+          window.location.reload();
+        } catch (err) {
+          alert("Erreur : " + err.message);
+        }
+      });
     } catch (err) {
       linksBody.innerHTML = `
         <tr>
-          <td colspan="3" class="error-state">
+          <td colspan="5" class="error-state">
             ${err.message}
           </td>
         </tr>
@@ -361,17 +571,8 @@ document.addEventListener("DOMContentLoaded", function () {
     localStorage.removeItem("token");
     updateAuthWidget();
 
-    // Optionnel : rafraîchir la page ou afficher un message
-    const messageDiv = document.getElementById("message");
-    if (messageDiv) {
-      messageDiv.style.display = "block";
-      messageDiv.className = "result";
-      messageDiv.innerHTML =
-        '<div style="text-align: center;">Déconnexion réussie !</div>';
-      setTimeout(() => {
-        messageDiv.style.display = "none";
-      }, 3000);
-    }
+    // Redirection immédiate vers la page de connexion
+    window.location.href = "/login.html";
   });
 
   // Mettre à jour l'affichage au chargement

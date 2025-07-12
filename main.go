@@ -16,7 +16,9 @@ import (
 
 type Link struct {
 	Alias      string    `json:"alias"`
-	TargetURL  string    `json:"target_url"`
+	TargetURL  string    `json:"target_url,omitempty"`
+	TargetURLs []string  `json:"target_urls,omitempty"`
+	Multi      bool      `json:"multi"`
 	Owner      string    `json:"owner"`
 	CreatedAt  time.Time `json:"created_at"`
 	ExpiresAt  time.Time `json:"expires_at"`
@@ -73,6 +75,19 @@ func main() {
 			return fiber.NewError(fiber.StatusGone, "Lien expiré")
 		}
 
+		if link.Multi {
+			// Incrémente clics
+			link.ClickCount++
+			_ = saveLink(link)
+			// Génère page HTML simple
+			html := "<!DOCTYPE html><html><head><meta charset='utf-8'><title>Liens</title><link rel='stylesheet' href='/styles.css'></head><body><div class='container'><h1>Choisissez un lien</h1><ul>"
+			for _, u := range link.TargetURLs {
+				html += "<li><a href='" + u + "' target='_blank'>" + u + "</a></li>"
+			}
+			html += "</ul></div></body></html>"
+			return c.Type("html").SendString(html)
+		}
+
 		// Incrémente le nombre de clics
 		link.ClickCount++
 		_ = saveLink(link)
@@ -100,15 +115,33 @@ func main() {
 		owner := tok.Claims.(jwt.MapClaims)["sub"].(string)
 
 		var body struct {
-			URL               string `json:"url"`
-			Alias             string `json:"alias"`
-			ExpirationMinutes int    `json:"expiration_minutes"`
+			URL               string   `json:"url"`
+			URLs              []string `json:"urls"`
+			Alias             string   `json:"alias"`
+			ExpirationMinutes int      `json:"expiration_minutes"`
+			Multi             bool     `json:"multi"`
 		}
 		if err := c.BodyParser(&body); err != nil {
 			return fiber.NewError(fiber.StatusBadRequest, "JSON invalide")
 		}
-		if body.URL == "" {
-			return fiber.NewError(fiber.StatusBadRequest, "Champ url manquant")
+		if body.Multi {
+			if len(body.URLs) == 0 {
+				return fiber.NewError(fiber.StatusBadRequest, "Aucune URL fournie")
+			}
+			// Vérification de sécurité pour chaque URL
+			for _, u := range body.URLs {
+				if !IsURLSafe(u) {
+					return fiber.NewError(fiber.StatusBadRequest, "URL refusée car elle contient du contenu inapproprié (alcool, drogues, contenu adulte): "+u)
+				}
+			}
+		} else {
+			if body.URL == "" {
+				return fiber.NewError(fiber.StatusBadRequest, "Champ url manquant")
+			}
+			// Vérification de sécurité de l'URL simple
+			if !IsURLSafe(body.URL) {
+				return fiber.NewError(fiber.StatusBadRequest, "URL refusée car elle contient du contenu inapproprié (alcool, drogues, contenu adulte)")
+			}
 		}
 
 		// Choix de l'alias : personnalisé ou généré
@@ -120,6 +153,10 @@ func main() {
 			if _, err := loadLink(alias); err == nil {
 				return fiber.NewError(fiber.StatusConflict, "Alias déjà utilisé")
 			}
+			// Vérifie que l'alias ne contient pas de contenu inapproprié
+			if !IsAliasSafe(alias) {
+				return fiber.NewError(fiber.StatusBadRequest, "Alias refusé car il contient du contenu inapproprié")
+			}
 		}
 
 		expiresAt := time.Time{} // 0 = jamais expiré
@@ -128,10 +165,16 @@ func main() {
 		}
 
 		link := Link{
-			Alias: alias, TargetURL: body.URL,
+			Alias:     alias,
 			Owner:     owner,
 			CreatedAt: time.Now(),
 			ExpiresAt: expiresAt,
+			Multi:     body.Multi,
+		}
+		if body.Multi {
+			link.TargetURLs = body.URLs
+		} else {
+			link.TargetURL = body.URL
 		}
 		if err := saveLink(link); err != nil {
 			return fiber.NewError(fiber.StatusInternalServerError, err.Error())
@@ -140,6 +183,24 @@ func main() {
 		return c.JSON(fiber.Map{
 			"short_url":  "http://localhost:3000/" + alias,
 			"expires_at": expiresAt,
+		})
+	})
+
+	// Route pour suggérer un alias basé sur une URL en utilisant l'IA
+	app.Post("/api/private/suggest-alias", func(c *fiber.Ctx) error {
+		var body struct {
+			URL string `json:"url"`
+		}
+		if err := c.BodyParser(&body); err != nil {
+			return fiber.NewError(fiber.StatusBadRequest, "JSON invalide")
+		}
+		if body.URL == "" {
+			return fiber.NewError(fiber.StatusBadRequest, "URL manquante")
+		}
+
+		suggestion := SuggestAlias(body.URL)
+		return c.JSON(fiber.Map{
+			"suggested_alias": suggestion,
 		})
 	})
 
@@ -159,6 +220,32 @@ func main() {
 			fd.Close()
 		}
 		return c.JSON(list)
+	})
+
+	app.Delete("/api/private/links/:alias", func(c *fiber.Ctx) error {
+		tok := c.Locals("userToken").(*jwt.Token)
+		username := tok.Claims.(jwt.MapClaims)["sub"].(string)
+		isAdmin := tok.Claims.(jwt.MapClaims)["adm"].(bool)
+
+		alias := c.Params("alias")
+
+		// Charger le lien pour vérifier le propriétaire
+		link, err := loadLink(alias)
+		if err != nil {
+			return fiber.NewError(fiber.StatusNotFound, "Lien non trouvé")
+		}
+
+		// Vérifier les permissions
+		if !isAdmin && link.Owner != username {
+			return fiber.NewError(fiber.StatusForbidden, "Accès refusé")
+		}
+
+		// Supprimer le fichier
+		if err := os.Remove(filepath.Join(dataDir, alias+".json")); err != nil {
+			return fiber.NewError(fiber.StatusInternalServerError, "Erreur lors de la suppression")
+		}
+
+		return c.SendStatus(fiber.StatusNoContent)
 	})
 
 	// ADMIN ROUTES
@@ -280,5 +367,7 @@ func main() {
 		return c.Send(png)
 	})
 
-	app.Listen(":3000")
+	if err := app.Listen(":3000"); err != nil {
+		panic(err)
+	}
 }

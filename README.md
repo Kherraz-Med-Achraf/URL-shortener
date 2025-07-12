@@ -6,17 +6,34 @@ Un raccourcisseur d'URL moderne et sécurisé développé en Go avec Fiber, offr
 
 ### 🚀 Fonctionnalités de Base
 
-- **Raccourcissement d'URL** : Conversion d'URLs longues en liens courts
-- **Alias personnalisés** : Possibilité de choisir son propre alias au lieu d'un généré automatiquement
+- **Raccourcissement d'URL** : Conversion d'URLs longues en liens courts (avec QR code automatique)
+- **Alias IA** : Suggère un alias pertinent grâce à OpenAI (bouton « Suggérer avec IA »)
+- **Filtrage IA** : Détecte les URLs/alias contenant contenu adulte, alcool, drogues, etc. (-18)
+- **Multi-URLs** : Un seul lien court peut rediriger vers plusieurs destinations
 - **Expiration configurable** : Définition d'une durée de vie pour les liens raccourcis
-- **Stockage en fichiers JSON** : Sauvegarde persistante des liens dans le dossier `data/`
-- **Validation d'unicité** : Vérification que l'alias n'existe pas déjà
+- **Authentification JWT** : Inscription / connexion, routes privées sécurisées
+- **Dashboard Admin** : Gestion des liens et utilisateurs (routes protégées)
+- **Stockage JSON** : Sauvegarde persistante dans `data/` (liens) et `data/users/` (utilisateurs)
+- **QR code** : Génération à la volée via `/qr/:alias`
 
 ### 🔄 API Endpoints
 
-- `GET /` : Page d'accueil
-- `POST /api/shorten` : Création d'un lien raccourci
-- `GET /:alias` : Redirection vers l'URL originale
+**Public**
+
+- `GET /` : Page d'accueil (statique)
+- `GET /:alias` : Redirection ou page multi-liens
+- `GET /qr/:alias` : QR code PNG pour le lien court
+- `POST /api/register` : Inscription (JSON `username` / `password`)
+- `POST /api/login` : Connexion → retourne un JWT
+
+**Protégées (Header `Authorization: Bearer <token>`)**
+
+- `POST /api/private/shorten` : Créer un lien court (simple ou multi-URL)
+- `POST /api/private/suggest-alias` : Obtenir une proposition d'alias IA
+- `GET  /api/private/links` : Lister ses liens (ou tous si admin)
+- `DELETE /api/private/links/:alias` : Supprimer un lien
+- `GET  /api/private/admin/users` : Liste des utilisateurs (admin)
+- `DELETE /api/private/admin/users/:username` : Supprimer un utilisateur (admin)
 
 ## 🛠️ Installation et Utilisation
 
@@ -31,9 +48,11 @@ Le projet utilise les dépendances suivantes :
 
 - **Fiber v2.52.8** : Framework web haute performance pour Go
 - **Google UUID v1.6.0** : Génération d'identifiants uniques
-- **Brotli v1.1.0** : Compression avancée des réponses HTTP
-- **FastHTTP v1.51.0** : Serveur HTTP optimisé (utilisé par Fiber)
-- **Compress v1.17.9** : Algorithmes de compression supplémentaires
+- **JWT v4.5.0** : Authentification sécurisée par JSON Web Tokens
+- **Go-OpenAI v1.40.5** : Appels à l'API OpenAI pour filtrage et suggestion
+- **godotenv v1.5.0** : Chargement automatique des variables d'environnement depuis `.env`
+- **Go-QRCode** : Génération de QR codes pour chaque lien
+- **Brotli / FastHTTP / Compress** : Performance et compression
 
 ### Installation
 
@@ -60,35 +79,6 @@ Grâce à l'utilisation de **FastHTTP** et **Fiber**, le serveur offre :
 - **Faible consommation mémoire** : Optimisé pour les environnements contraints
 - **Compression automatique** : Brotli/gzip pour réduire la bande passante
 
-### Utilisation de l'API
-
-#### Raccourcir une URL
-
-```bash
-curl -X POST http://localhost:3000/api/shorten \
-  -H "Content-Type: application/json" \
-  -d '{
-    "url": "https://example.com/very/long/url",
-    "alias": "mon-alias",
-    "expiration_minutes": 60
-  }'
-```
-
-**Réponse :**
-
-```json
-{
-  "short_url": "http://localhost:3000/mon-alias",
-  "expires_at": "2024-01-01T15:30:00Z"
-}
-```
-
-#### Accéder à un lien raccourci
-
-```bash
-curl -L http://localhost:3000/mon-alias
-```
-
 ## 🎯 Fonctionnalités Prévues
 
 ### 🤖 Intelligence Artificielle
@@ -112,7 +102,6 @@ curl -L http://localhost:3000/mon-alias
 
 - **Interface web moderne** : Page de création et gestion des liens
 - **Responsive design** : Compatible mobile et desktop
-- **Thème sombre/clair** : Personnalisation de l'interface
 
 ## 📁 Structure du Projet
 
@@ -120,8 +109,8 @@ curl -L http://localhost:3000/mon-alias
 url-shortener/                    # Module: url-shortener
 ├── main.go                      # Point d'entrée principal
 ├── data/                        # Stockage des liens (JSON)
-│   ├── 6dac2c.json             # Exemple d'alias généré
-│   └── fbb41d.json             # Autre exemple
+│   ├── links/                   # Stockage des liens raccourcis
+│   └── users/                   # Données utilisateurs
 ├── go.mod                       # Module Go 1.24.4 + dépendances
 ├── go.sum                       # Checksums de sécurité
 ├── tmp/                         # Fichiers temporaires
@@ -135,10 +124,23 @@ url-shortener/                    # Module: url-shortener
 ### Stack Technologique
 
 - **Go 1.24.4** : Langage principal avec les dernières fonctionnalités
-- **Fiber v2.52.8** : Framework web rapide et expressif, inspiré d'Express.js
-- **FastHTTP** : Serveur HTTP ultra-performant (10x plus rapide que net/http)
-- **UUID v1.6.0** : Génération d'identifiants uniques thread-safe
-- **Compression multicouche** : Brotli + gzip pour optimiser la bande passante
+
+### Dépendances Principales
+
+- **Fiber v2.52.8** : Framework web haute performance
+  - `gofiber/jwt/v3` : Middleware JWT pour l'authentification
+- **OpenAI v1.40.5** : Intégration IA pour l'analyse de contenu et suggestions
+- **UUID v1.6.0** : Génération d'identifiants uniques cryptographiquement sûrs
+- **QR Code v0.0.0** : Génération de codes QR pour les liens raccourcis
+- **JWT v4.5.0** : Tokens d'authentification sécurisés
+- **GoDotEnv v1.5.1** : Gestion des variables d'environnement
+- **Crypto** : Chiffrement et hachage sécurisés
+
+### Dépendances Système
+
+- **Brotli v1.1.0** : Compression avancée (meilleure que gzip)
+- **FastHTTP v1.51.0** : Serveur HTTP ultra-rapide
+- **Colorable/IsATTY** : Support couleurs terminal multiplateforme
 
 ### Avantages de l'Architecture
 
@@ -152,26 +154,5 @@ url-shortener/                    # Module: url-shortener
 ### Variables d'environnement
 
 ```bash
-PORT=3000              # Port du serveur
-DATA_DIR=data          # Dossier de stockage
-AI_API_KEY=your-key    # Clé API pour l'IA (futur)
+OPENAI_API_KEY=sk-...  # Clé API OpenAI (requise pour l'IA)
 ```
-
-### Personnalisation
-
-- Modifier le port dans `main.go`
-- Changer le dossier de stockage avec la constante `dataDir`
-- Ajuster la durée d'expiration par défaut
-
-## 🚀 Déploiement
-
-### Production
-
-```bash
-# Compiler l'application
-go build -o url-shortener main.go
-
-# Lancer en production
-./url-shortener
-```
-
