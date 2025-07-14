@@ -15,15 +15,9 @@ import (
 )
 
 func init() {
-	// Charge les variables d'environnement à partir d'un fichier .env s'il est présent.
-	// On ignore l'erreur pour ne pas interrompre l'exécution si le fichier est absent.
 	_ = godotenv.Load()
 }
 
-// IsURLSafe effectue une vérification simple d'une URL :
-// 1. Valide le format (schéma http/https)
-// 2. Demande un avis rapide au modèle OpenAI (si OPENAI_API_KEY est défini)
-// La fonction retourne true si toutes les vérifications passent ou si la clé API n'est pas fournie.
 func IsURLSafe(u string) bool {
 	if !isFormatValid(u) {
 		return false
@@ -34,7 +28,6 @@ func IsURLSafe(u string) bool {
 	return true
 }
 
-// isFormatValid vérifie simplement le schéma et la syntaxe générale.
 func isFormatValid(u string) bool {
 	p, err := url.ParseRequestURI(u)
 	if err != nil {
@@ -43,8 +36,7 @@ func isFormatValid(u string) bool {
 	return p.Scheme == "http" || p.Scheme == "https"
 }
 
-// openAICheck interroge un petit modèle GPT pour un avis rapide.
-// Si OPENAI_API_KEY n'est pas défini, la vérification est ignorée (considérée comme valide).
+
 func openAICheck(u string) bool {
 	apiKey := os.Getenv("OPENAI_API_KEY")
 	if apiKey == "" {
@@ -75,7 +67,6 @@ func openAICheck(u string) bool {
 	return strings.HasPrefix(answer, "SAFE")
 }
 
-// IsAliasSafe utilise l'IA pour vérifier si un alias est approprié
 func IsAliasSafe(alias string) bool {
 	apiKey := os.Getenv("OPENAI_API_KEY")
 	if apiKey == "" {
@@ -106,7 +97,6 @@ func IsAliasSafe(alias string) bool {
 	return strings.HasPrefix(answer, "SAFE")
 }
 
-// SuggestAlias utilise l'IA pour suggérer un alias approprié basé sur l'URL
 func SuggestAlias(rawURL string) string {
 	apiKey := os.Getenv("OPENAI_API_KEY")
 	if apiKey == "" {
@@ -129,17 +119,15 @@ func SuggestAlias(rawURL string) string {
 	})
 	if err != nil || len(resp.Choices) == 0 {
 		log.Println("OpenAI alias suggestion error:", err)
-		return "link-" + uuid.NewString()[:4] // fallback
+		return "link-" + uuid.NewString()[:4]
 	}
 
 	suggestion := strings.TrimSpace(resp.Choices[0].Message.Content)
 	log.Println("OpenAI suggested alias:", suggestion)
 
-	// Vérifier que la suggestion est safe
 	if IsAliasSafe(suggestion) {
 		return suggestion
 	}
 
-	// Si pas safe, fallback
 	return "link-" + uuid.NewString()[:4]
 }

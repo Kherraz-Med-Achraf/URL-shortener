@@ -110,7 +110,7 @@ document.addEventListener("DOMContentLoaded", function () {
           .map((input) => input.value.trim())
           .filter((u) => u);
       }
-      const alias = document.getElementById("alias").value.trim();
+      const alias = document.getElementById("alias").value.trim().replace(/\s+/g, '');
       const expires = document.getElementById("expires").value.trim();
       const submitButton = document.querySelector("button[type='submit']");
       const messageDiv = document.getElementById("message");
